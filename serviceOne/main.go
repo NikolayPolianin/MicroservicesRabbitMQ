@@ -1,49 +1,20 @@
 package main
 
 import (
-	"context"
 	"log"
-	"time"
-
-	amqp "github.com/rabbitmq/amqp091-go"
+	"net/http"
+	rabbitmq "rabbitmq/serviceOne/internal/rabbitMq"
+	internal "rabbitmq/serviceOne/internal/service"
 )
 func main(){
-	conn,err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	var rabbit rabbitmq.RabbitMQ
+	router := http.NewServeMux()
+	conn,err := rabbit.NewConnection("amqp://guest:guest@localhost:5672/")
 	if err != nil{
-		log.Fatalf("unable to open connect to RabbitMQ server. Error: %s",err)
+		log.Printf("%s",err)
 	}
 	defer conn.Close()
-
-	ch,err := conn.Channel()
-	if err != nil{
-		log.Fatalf("failed to open channel. Error: %s", err)
-	}
-	defer ch.Close()
-	q,err := ch.QueueDeclare(
-		"firstQueue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil{
-		log.Fatalf("failed to create queue. Error: %s", err)
-	}
-	ctx,cancel := context.WithTimeout(context.Background(), 5 * time.Second)
-	defer cancel()
-
-	body := "hello world"
-	err = ch.PublishWithContext(ctx,
-		"",
-		q.Name,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:"text/plain",
-			Body: []byte(body)})
-	if err != nil{
-		log.Fatalf("failed publish message Error: %s",err)
-	}
-	
+	ch,q := rabbit.OpenChannel(conn,"firstQueue")
+	_ = internal.NewHandler(router,q,ch)
+	_ = http.ListenAndServe("8080",router)
 }
